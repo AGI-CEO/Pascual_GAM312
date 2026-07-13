@@ -3,6 +3,9 @@
 
 #include "PlayerChar.h"
 
+// We need this include so we can use GetWorld()->GetTimerManager()
+#include "TimerManager.h"
+
 // Constructor — runs when the character is first created (before the game even starts)
 APlayerChar::APlayerChar()
 {
@@ -21,13 +24,35 @@ APlayerChar::APlayerChar()
 	// Without this, moving the mouse wouldn't actually rotate the camera view
 	PlayerCameraComponent->bUsePawnControlRotation = true;
 
+	// --- Set up our Resource Arrays ---
+	// We use arrays so we can manage all resources in one place
+	// Index 0 = Wood, Index 1 = Stone, Index 2 = Berry
+
+	// Create 3 empty slots in the resources array (all start at 0)
+	ResourcesArray.SetNum(3);
+
+	// Set up the name array so we know which index is which resource
+	ResourceNames.SetNum(3);
+	ResourceNames[0] = "Wood";
+	ResourceNames[1] = "Stone";
+	ResourceNames[2] = "Berry";
 }
 
 // Called once when the game starts — good place to initialize runtime stuff
 void APlayerChar::BeginPlay()
 {
 	Super::BeginPlay();
-	
+
+	// Start a repeating timer that calls DecreaseStats() every 2 seconds
+	// This makes hunger go down over time and handles stamina regen
+	// "this" means we're calling a function on this player character
+	GetWorld()->GetTimerManager().SetTimer(
+		StatsTimerHandle,       // The timer handle we declared in the header
+		this,                   // The object that owns the function (our player)
+		&APlayerChar::DecreaseStats, // The function to call every tick
+		2.0f,                   // How often to call it (every 2 seconds)
+		true                    // true = keep repeating, false = only fire once
+	);
 }
 
 // Called every frame — DeltaTime tells us how much time passed since the last frame
@@ -65,6 +90,8 @@ void APlayerChar::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	// When Space Bar is released, stop jumping (so we don't jump forever)
 	PlayerInputComponent->BindAction("JumpEvent", IE_Released, this, &APlayerChar::StopJump);
 
+	// When Left Mouse Button is pressed, do a line trace to find and interact with objects
+	PlayerInputComponent->BindAction("Interact", IE_Pressed, this, &APlayerChar::FindObject);
 }
 
 // Moves the character forward or backward based on where they're currently looking
@@ -100,10 +127,202 @@ void APlayerChar::StopJump()
 	StopJumping();
 }
 
-// This will eventually handle our Line Trace to detect objects in the world
-// (e.g., items we can pick up, doors we can open, etc.)
-// For now, it's just an empty stub — we'll fill it in later
+// ============================================================================
+// PLAYER STAT FUNCTIONS
+// These functions adjust our player's Health, Hunger, and Stamina values.
+// We clamp them so they never go above 100 (but they can go below 0).
+// Pass in a positive number to increase, or a negative number to decrease.
+// ============================================================================
+
+// Adds (or subtracts) from the player's health
+// Won't let health go above 100
+void APlayerChar::SetHealth(float amount)
+{
+	// Only add if the result would be under 100 — prevents overheal
+	if (Health + amount < 100)
+	{
+		Health += amount;
+	}
+}
+
+// Adds (or subtracts) from the player's hunger
+// Won't let hunger go above 100
+void APlayerChar::SetHunger(float amount)
+{
+	// Only add if the result would be under 100 — prevents overfeeding
+	if (Hunger + amount < 100)
+	{
+		Hunger += amount;
+	}
+}
+
+// Adds (or subtracts) from the player's stamina
+// Won't let stamina go above 100
+void APlayerChar::SetStamina(float amount)
+{
+	// Only add if the result would be under 100 — prevents going over max
+	if (Stamina + amount < 100)
+	{
+		Stamina += amount;
+	}
+}
+
+// This runs every 2 seconds on a timer (set up in BeginPlay)
+// It handles:
+//   1. Hunger slowly going down over time
+//   2. Stamina slowly regenerating over time (if not starving)
+//   3. Health going down when hunger reaches 0
+void APlayerChar::DecreaseStats()
+{
+	// Subtract 1 from hunger every 2 seconds — the player is always getting hungrier
+	SetHunger(-1.0f);
+
+	// If the player still has food in their belly, regenerate some stamina
+	if (Hunger > 0)
+	{
+		SetStamina(2.0f);
+	}
+
+	// If hunger hit 0 or below, start taking damage — you're starving!
+	if (Hunger <= 0)
+	{
+		SetHealth(-1.0f);
+	}
+}
+
+// ============================================================================
+// RESOURCE COLLECTION
+// GiveResource adds resources to the right inventory slot based on the name.
+// FindObject does a line trace from the camera to detect and collect resources.
+// ============================================================================
+
+// Adds resources to the correct inventory slot based on the resource type name
+// "Wood" goes to index 0, "Stone" goes to index 1, "Berry" goes to index 2
+void APlayerChar::GiveResource(int32 amount, FString resourceType)
+{
+	// Check which resource type we're collecting and add to the right slot
+	if (resourceType == "Wood")
+	{
+		// Add to the Wood slot (index 0)
+		ResourcesArray[0] += amount;
+	}
+	else if (resourceType == "Stone")
+	{
+		// Add to the Stone slot (index 1)
+		ResourcesArray[1] += amount;
+	}
+	else if (resourceType == "Berry")
+	{
+		// Add to the Berry slot (index 2)
+		ResourcesArray[2] += amount;
+	}
+}
+
+// This is our main interaction function — it shoots a line trace forward from
+// the camera and checks if we hit a resource object. If we did, it collects
+// from it, spawns a decal, and destroys the resource when it's empty.
 void APlayerChar::FindObject()
 {
+	// Only allow interaction if we have enough stamina (need at least 5)
+	if (Stamina > 5)
+	{
+		// Subtract 5 stamina every time we swing/interact
+		SetStamina(-5.0f);
 
+		// --- Set up the Line Trace ---
+		// A line trace is like shooting an invisible laser forward from the camera
+		// to see what it hits
+
+		// This will store info about whatever our trace hits
+		FHitResult HitResult;
+
+		// Start the trace from where the camera is in the world
+		FVector StartLocation = PlayerCameraComponent->GetComponentLocation();
+
+		// Get the direction the camera is facing and extend it 800 units out
+		// (800 units is about how far the player can reach)
+		FVector Direction = PlayerCameraComponent->GetForwardVector() * 800;
+
+		// The end point is the start plus the direction — that's where the trace stops
+		FVector EndLocation = StartLocation + Direction;
+
+		// Set up collision query parameters for the trace
+		FCollisionQueryParams QueryParams;
+
+		// Tell the trace to ignore our own player — we don't want to hit ourselves!
+		QueryParams.AddIgnoredActor(this);
+
+		// Enable complex collision for more accurate hit detection
+		QueryParams.bTraceComplex = true;
+
+		// Allow face index to be returned (lets us get surface normal info if needed)
+		QueryParams.bReturnFaceIndex = true;
+
+		// Actually shoot the line trace into the world
+		// We use the Visibility trace channel (ECC_Visibility) which is the default
+		GetWorld()->LineTraceSingleByChannel(
+			HitResult,            // Where to store the hit info
+			StartLocation,        // Where the trace starts
+			EndLocation,          // Where the trace ends
+			ECC_Visibility,       // Which collision channel to use
+			QueryParams           // Our collision settings (ignore self, etc.)
+		);
+
+		// --- Try to cast what we hit to a Resource ---
+		// Cast means "check if this actor is actually a Resource_M type"
+		// If it is, we get a pointer to it. If not, HitResource will be null.
+		AResource_M* HitResource = Cast<AResource_M>(HitResult.GetActor());
+
+		// Make sure we actually hit a valid resource (not a wall or the ground)
+		// If we skip this check and hit something that's NOT a resource, the game crashes
+		if (HitResource)
+		{
+			// Get the name of the resource we hit (e.g. "Wood", "Stone", "Berry")
+			FString hitName = HitResource->resourceName;
+
+			// Get how much this resource gives us per hit
+			int32 resourceValue = HitResource->resourceAmount;
+
+			// Subtract the amount we're taking from the resource's total supply
+			HitResource->totalResource = HitResource->totalResource - resourceValue;
+
+			// Check if the resource still has stuff left to give
+			if (HitResource->totalResource > resourceValue)
+			{
+				// Resource still has supply — give the player the resources
+				GiveResource(resourceValue, hitName);
+
+				// Print a debug message on screen so we can see it's working
+				if (GEngine)
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, TEXT("Resource Collected"));
+				}
+			}
+			else
+			{
+				// Resource is empty — destroy the object and show a message
+				HitResource->Destroy();
+
+				if (GEngine)
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("Resource Depleted"));
+				}
+			}
+
+			// --- Spawn a Decal at the Hit Location ---
+			// This creates a visual indicator (like a red circle) where we hit the resource
+			// The decal only shows up if we assigned a material in the Blueprint
+			if (HitDecal)
+			{
+				UGameplayStatics::SpawnDecalAtLocation(
+					GetWorld(),                        // The world to spawn in
+					HitDecal,                          // The decal material (set in Blueprint)
+					FVector(10.0f, 10.0f, 10.0f),     // Size of the decal (10x10x10)
+					HitResult.Location,                // Where the line trace hit
+					FRotator(-90.0f, 0.0f, 0.0f),     // Rotation (face flat on surface)
+					2.0f                               // How long the decal lasts (2 seconds)
+				);
+			}
+		}
+	}
 }
