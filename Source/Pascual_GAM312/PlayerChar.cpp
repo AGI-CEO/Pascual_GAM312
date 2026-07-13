@@ -283,16 +283,16 @@ void APlayerChar::FindObject()
 			// Get how much this resource gives us per hit
 			int32 resourceValue = HitResource->resourceAmount;
 
+			// Always give the player the resources when they hit
+			GiveResource(resourceValue, hitName);
+
 			// Subtract the amount we're taking from the resource's total supply
 			HitResource->totalResource = HitResource->totalResource - resourceValue;
 
-			// Check if the resource still has stuff left to give
-			if (HitResource->totalResource > resourceValue)
+			// Check if the resource still has stuff left
+			if (HitResource->totalResource > 0)
 			{
-				// Resource still has supply — give the player the resources
-				GiveResource(resourceValue, hitName);
-
-				// Print a debug message on screen so we can see it's working
+				// Resource still has supply — show collected message
 				if (GEngine)
 				{
 					GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, TEXT("Resource Collected"));
@@ -300,7 +300,7 @@ void APlayerChar::FindObject()
 			}
 			else
 			{
-				// Resource is empty — destroy the object and show a message
+				// Resource is empty — destroy the object and show depleted message
 				HitResource->Destroy();
 
 				if (GEngine)
