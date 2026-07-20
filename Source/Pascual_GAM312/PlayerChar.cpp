@@ -36,6 +36,10 @@ APlayerChar::APlayerChar()
 	ResourceNames[0] = "Wood";
 	ResourceNames[1] = "Stone";
 	ResourceNames[2] = "Berry";
+
+	// Create 3 empty slots in the building array (all start at 0)
+	// Index 0 = Walls, Index 1 = Floors, Index 2 = Ceilings
+	BuildingArray.SetNum(3);
 }
 
 // Called once when the game starts — good place to initialize runtime stuff
@@ -60,6 +64,21 @@ void APlayerChar::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	// --- Building Placement Preview ---
+	// When we're in building mode and have a valid spawned part,
+	// move it to stay 400 units in front of the camera so it follows where we look
+	if (isBuilding && SpawnedPart)
+	{
+		// Get where the camera is and which way it's pointing
+		FVector CamLocation = PlayerCameraComponent->GetComponentLocation();
+		FVector CamForward = PlayerCameraComponent->GetForwardVector();
+
+		// Calculate a point 400 units ahead of the camera
+		FVector PlaceLocation = CamLocation + (CamForward * 400.0f);
+
+		// Move the building part to that point so it follows our view
+		SpawnedPart->SetActorLocation(PlaceLocation);
+	}
 }
 
 // This is where we connect our input mappings (from Project Settings) to our C++ functions
@@ -92,6 +111,9 @@ void APlayerChar::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 
 	// When Left Mouse Button is pressed, do a line trace to find and interact with objects
 	PlayerInputComponent->BindAction("Interact", IE_Pressed, this, &APlayerChar::FindObject);
+
+	// When the E key is pressed, rotate the building part we're holding by 90 degrees
+	PlayerInputComponent->BindAction("RotPart", IE_Pressed, this, &APlayerChar::RotateBuilding);
 }
 
 // Moves the character forward or backward based on where they're currently looking
@@ -221,8 +243,20 @@ void APlayerChar::GiveResource(int32 amount, FString resourceType)
 // This is our main interaction function — it shoots a line trace forward from
 // the camera and checks if we hit a resource object. If we did, it collects
 // from it, spawns a decal, and destroys the resource when it's empty.
+// BUT if we're in building mode, clicking will PLACE the building instead.
 void APlayerChar::FindObject()
 {
+	// --- Building Mode Check ---
+	// If we're currently placing a building, clicking should stop placement
+	// instead of doing the resource trace
+	if (isBuilding)
+	{
+		// We clicked while in building mode — place the part and stop building
+		isBuilding = false;
+		return;
+	}
+
+	// --- Normal Resource Collection ---
 	// Only allow interaction if we have enough stamina (need at least 5)
 	if (Stamina > 5)
 	{
@@ -324,5 +358,100 @@ void APlayerChar::FindObject()
 				);
 			}
 		}
+	}
+}
+
+// ============================================================================
+// BUILDING SYSTEM FUNCTIONS
+// These handle crafting items, spawning building parts, and rotating them.
+// ============================================================================
+
+// Subtracts the crafting cost from our resources and adds 1 to the correct building slot.
+// woodAmount = how much wood this item costs to craft
+// stoneAmount = how much stone this item costs to craft
+// buildingObject = the name ("Wall", "Floor", or "Ceiling") to match the right slot
+void APlayerChar::UpdateResources(int32 woodAmount, int32 stoneAmount, FString buildingObject)
+{
+	// Subtract the wood cost from our wood supply (index 0)
+	ResourcesArray[0] -= woodAmount;
+
+	// Subtract the stone cost from our stone supply (index 1)
+	ResourcesArray[1] -= stoneAmount;
+
+	// Figure out which building slot to add to based on the name string
+	if (buildingObject == "Wall")
+	{
+		// Add 1 wall to our building inventory (index 0)
+		BuildingArray[0] += 1;
+	}
+	else if (buildingObject == "Floor")
+	{
+		// Add 1 floor to our building inventory (index 1)
+		BuildingArray[1] += 1;
+	}
+	else if (buildingObject == "Ceiling")
+	{
+		// Add 1 ceiling to our building inventory (index 2)
+		BuildingArray[2] += 1;
+	}
+}
+
+// Spawns a building part into the world 400 units ahead of the camera.
+// buildingID = which slot to check (0=Wall, 1=Floor, 2=Ceiling)
+// isSuccess = output — true if we spawned it, false if we don't have any
+void APlayerChar::SpawnBuilding(int32 buildingID, bool& isSuccess)
+{
+	// Only spawn if we're not already placing something
+	if (!isBuilding)
+	{
+		// Check if we actually have at least 1 of this building type
+		if (BuildingArray[buildingID] > 0)
+		{
+			// We're now in building/placement mode
+			isBuilding = true;
+
+			// Calculate a position 400 units ahead of the camera to spawn at
+			FVector CamLocation = PlayerCameraComponent->GetComponentLocation();
+			FVector CamForward = PlayerCameraComponent->GetForwardVector();
+			FVector SpawnLocation = CamLocation + (CamForward * 400.0f);
+
+			// Start with zero rotation — the player can rotate with E later
+			FRotator SpawnRotation = FRotator::ZeroRotator;
+
+			// Set up spawn parameters (default settings are fine)
+			FActorSpawnParameters SpawnParams;
+
+			// Subtract 1 from the building slot since we're using it up
+			BuildingArray[buildingID] -= 1;
+
+			// Actually spawn the actor into the world
+			// BuildPartClass is set from the Widget to the correct child BP
+			SpawnedPart = GetWorld()->SpawnActor<ABuildingPart>(
+				BuildPartClass,    // Which Blueprint class to spawn (Wall_BP, Floor_BP, etc.)
+				SpawnLocation,     // Where to put it initially
+				SpawnRotation,     // Starting rotation (zero)
+				SpawnParams        // Extra spawn settings
+			);
+
+			// Tell the Widget that the spawn was successful
+			isSuccess = true;
+			return;
+		}
+	}
+
+	// If we get here, either we're already building or we don't have any — spawn failed
+	isSuccess = false;
+}
+
+// Rotates the building part we're currently holding by 90 degrees.
+// This is bound to the E key so the player can orient walls and floors.
+void APlayerChar::RotateBuilding()
+{
+	// Only rotate if we're actually holding a building part
+	if (SpawnedPart)
+	{
+		// Add 90 degrees to the yaw (left-right rotation)
+		// Pitch = 0 (no tilt), Yaw = 90 (turn), Roll = 0 (no roll)
+		SpawnedPart->AddActorLocalRotation(FRotator(0.0f, 90.0f, 0.0f));
 	}
 }

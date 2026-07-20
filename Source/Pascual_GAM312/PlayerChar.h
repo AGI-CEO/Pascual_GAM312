@@ -11,6 +11,9 @@
 // Include our Resource master class so we can cast to it during line traces
 #include "Resource_M.h"
 
+// Include our BuildingPart class so we can spawn and manage building pieces
+#include "BuildingPart.h"
+
 // Include GameplayStatics so we can spawn decals when we hit resources
 #include "Kismet/GameplayStatics.h"
 
@@ -87,6 +90,23 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Resources")
 	void GiveResource(int32 amount, FString resourceType);
 
+	// --- Building System Functions ---
+
+	// Subtracts wood and stone from our inventory and adds 1 to the matching building slot
+	// buildingObject is the name string ("Wall", "Floor", or "Ceiling") so we know which slot
+	UFUNCTION(BlueprintCallable, Category = "Building")
+	void UpdateResources(int32 woodAmount, int32 stoneAmount, FString buildingObject);
+
+	// Spawns a building part 400 units ahead of the camera
+	// buildingID tells us which slot to check (0=Wall, 1=Floor, 2=Ceiling)
+	// isSuccess returns true if the spawn worked, false if we don't have enough parts
+	UFUNCTION(BlueprintCallable, Category = "Building")
+	void SpawnBuilding(int32 buildingID, bool& isSuccess);
+
+	// Rotates the currently held building part by 90 degrees — bound to the E key
+	UFUNCTION()
+	void RotateBuilding();
+
 	// --- Player Stat Variables ---
 	// These track the player's current health, hunger, and stamina
 	// All start at 100 and can go up or down during gameplay
@@ -123,6 +143,28 @@ public:
 	// Index 0 = Wood, Index 1 = Stone, Index 2 = Berry
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Resources")
 	TArray<int32> ResourcesArray;
+
+	// --- Building System Variables ---
+
+	// Keeps track of how many of each building type we've crafted
+	// Index 0 = Walls, Index 1 = Floors, Index 2 = Ceilings
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Building")
+	TArray<int32> BuildingArray;
+
+	// Whether we're currently in building mode (placing a part)
+	// When true, clicking places the part instead of collecting resources
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Building")
+	bool isBuilding = false;
+
+	// This lets us pick which child Blueprint to spawn (Wall_BP, Floor_BP, or Ceiling_BP)
+	// TSubclassOf means we can set it to any class that inherits from ABuildingPart
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Building")
+	TSubclassOf<ABuildingPart> BuildPartClass;
+
+	// A pointer to the building part we just spawned — we use this to move it
+	// around in Tick and to rotate it when the player presses E
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Building")
+	ABuildingPart* SpawnedPart;
 
 	// Array of resource names that matches up with ResourcesArray
 	// So ResourceNames[0] = "Wood" matches ResourcesArray[0] = wood count
