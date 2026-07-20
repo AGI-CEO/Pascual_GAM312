@@ -17,4 +17,9 @@ ABuildingPart::ABuildingPart()
 	// We attach it to the arrow so it moves and rotates with the pivot
 	Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
 	Mesh->SetupAttachment(PivotArrow);
+
+	// Turn on collision so the player can't walk through placed building parts
+	// BlockAll means nothing passes through it — bullets, players, everything stops
+	Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	Mesh->SetCollisionResponseToAllChannels(ECollisionResponse::ECR_Block);
 }

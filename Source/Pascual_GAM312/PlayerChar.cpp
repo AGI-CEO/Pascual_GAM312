@@ -253,6 +253,13 @@ void APlayerChar::FindObject()
 	{
 		// We clicked while in building mode — place the part and stop building
 		isBuilding = false;
+
+		// Now that the part is placed, turn collision back on
+		// so the player can't walk through it anymore
+		if (SpawnedPart)
+		{
+			SpawnedPart->Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+		}
 		return;
 	}
 
@@ -432,6 +439,13 @@ void APlayerChar::SpawnBuilding(int32 buildingID, bool& isSuccess)
 				SpawnRotation,     // Starting rotation (zero)
 				SpawnParams        // Extra spawn settings
 			);
+
+			// Turn off collision while we're moving it around
+			// so it doesn't push the player while floating in front of the camera
+			if (SpawnedPart)
+			{
+				SpawnedPart->Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			}
 
 			// Tell the Widget that the spawn was successful
 			isSuccess = true;
