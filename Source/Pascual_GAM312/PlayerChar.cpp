@@ -79,6 +79,16 @@ void APlayerChar::Tick(float DeltaTime)
 		// Move the building part to that point so it follows our view
 		SpawnedPart->SetActorLocation(PlaceLocation);
 	}
+
+	// --- Update HUD Bars ---
+	// Every frame, send our current Health, Hunger, and Stamina values
+	// to the Player Widget so the progress bars on screen stay up to date.
+	// We check if PlayerUI exists first to avoid crashing if the widget
+	// hasn't been created yet (like during the very first frame).
+	if (PlayerUI)
+	{
+		PlayerUI->UpdateBars(Health, Hunger, Stamina);
+	}
 }
 
 // This is where we connect our input mappings (from Project Settings) to our C++ functions

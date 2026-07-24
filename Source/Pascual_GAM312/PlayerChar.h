@@ -14,6 +14,9 @@
 // Include our BuildingPart class so we can spawn and manage building pieces
 #include "BuildingPart.h"
 
+// Include our PlayerWidget class so we can reference the HUD and call UpdateBars
+#include "PlayerWidget.h"
+
 // Include GameplayStatics so we can spawn decals when we hit resources
 #include "Kismet/GameplayStatics.h"
 
@@ -160,6 +163,11 @@ public:
 	// TSubclassOf means we can set it to any class that inherits from ABuildingPart
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Building")
 	TSubclassOf<ABuildingPart> BuildPartClass;
+
+	// A pointer to our Player Widget HUD — we set this in the Player Blueprint's BeginPlay
+	// so we can call UpdateBars() on it every frame to keep the progress bars up to date
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Player HUD")
+	UPlayerWidget* PlayerUI;
 
 	// A pointer to the building part we just spawned — we use this to move it
 	// around in Tick and to rotate it when the player presses E
