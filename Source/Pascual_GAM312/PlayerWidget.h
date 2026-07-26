@@ -4,7 +4,9 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "PlayerWidget.generate// This is our custom Widget class for the player's HUD.
+#include "PlayerWidget.generated.h"
+
+// This is our custom Widget class for the player's HUD.
 // It inherits from UUserWidget, which is Unreal's base class for on-screen UI elements.
 // We declare UpdateBars here in C++ so we can call it from the Player Character,
 // but the actual progress bar wiring happens in the Widget Blueprint.
