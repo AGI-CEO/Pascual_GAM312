@@ -57,6 +57,15 @@ void APlayerChar::BeginPlay()
 		2.0f,                   // How often to call it (every 2 seconds)
 		true                    // true = keep repeating, false = only fire once
 	);
+
+	// --- Initial Objective Widget Setup ---
+	// Check if our Objective Widget pointer has been set (assigned in Blueprint).
+	// If valid, initialize our HUD counters to 0 when the game starts.
+	if (ObjectWidget)
+	{
+		ObjectWidget->UpdateMatObjectives(MatsCollected);
+		ObjectWidget->UpdateBuildObject(ObjectsBuilt);
+	}
 }
 
 // Called every frame — DeltaTime tells us how much time passed since the last frame
@@ -270,6 +279,16 @@ void APlayerChar::FindObject()
 		{
 			SpawnedPart->Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 		}
+
+		// Increase our count of placed building objects by 1
+		ObjectsBuilt += 1.0f;
+
+		// If our objective widget exists, trigger the update event with our new build count
+		if (ObjectWidget)
+		{
+			ObjectWidget->UpdateBuildObject(ObjectsBuilt);
+		}
+
 		return;
 	}
 
@@ -336,6 +355,15 @@ void APlayerChar::FindObject()
 
 			// Always give the player the resources when they hit
 			GiveResource(resourceValue, hitName);
+
+			// Add the collected resource amount to our total materials collected counter
+			MatsCollected += static_cast<float>(resourceValue);
+
+			// If our objective widget exists, update the HUD material counter
+			if (ObjectWidget)
+			{
+				ObjectWidget->UpdateMatObjectives(MatsCollected);
+			}
 
 			// Subtract the amount we're taking from the resource's total supply
 			HitResource->totalResource = HitResource->totalResource - resourceValue;

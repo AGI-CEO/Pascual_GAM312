@@ -17,6 +17,9 @@
 // Include our PlayerWidget class so we can reference the HUD and call UpdateBars
 #include "PlayerWidget.h"
 
+// Include our ObjectiveWidget class so we can reference the objective HUD and update counters
+#include "ObjectiveWidget.h"
+
 // Include GameplayStatics so we can spawn decals when we hit resources
 #include "Kismet/GameplayStatics.h"
 
@@ -168,6 +171,19 @@ public:
 	// so we can call UpdateBars() on it every frame to keep the progress bars up to date
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Player HUD")
 	UPlayerWidget* PlayerUI;
+
+	// A pointer to our Objective Widget HUD — we set this in the Player Blueprint's BeginPlay
+	// so we can update our material and build objective progress on screen
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Player HUD")
+	UObjectiveWidget* ObjectWidget;
+
+	// Tracks how many building parts the player has successfully placed towards the objective
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Objectives")
+	float ObjectsBuilt = 0.0f;
+
+	// Tracks total materials gathered by the player towards the 500 material objective
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Objectives")
+	float MatsCollected = 0.0f;
 
 	// A pointer to the building part we just spawned — we use this to move it
 	// around in Tick and to rotate it when the player presses E
