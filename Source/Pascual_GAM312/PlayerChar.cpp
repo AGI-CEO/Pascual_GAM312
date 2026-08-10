@@ -2,6 +2,7 @@
 
 
 #include "PlayerChar.h"
+#include "TurretBuildingPart.h"
 
 // We need this include so we can use GetWorld()->GetTimerManager()
 #include "TimerManager.h"
@@ -37,9 +38,9 @@ APlayerChar::APlayerChar()
 	ResourceNames[1] = "Stone";
 	ResourceNames[2] = "Berry";
 
-	// Create 3 empty slots in the building array (all start at 0)
-	// Index 0 = Walls, Index 1 = Floors, Index 2 = Ceilings
-	BuildingArray.SetNum(3);
+	// Create 4 empty slots in the building array (all start at 0)
+	// Index 0 = Walls, Index 1 = Floors, Index 2 = Ceilings, Index 3 = Turrets
+	BuildingArray.SetNum(4);
 }
 
 // Called once when the game starts — good place to initialize runtime stuff
@@ -278,6 +279,13 @@ void APlayerChar::FindObject()
 		if (SpawnedPart)
 		{
 			SpawnedPart->Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+
+			// If this is a turret, notify it that it has been placed so it activates targeting & firing
+			ATurretBuildingPart* TurretPart = Cast<ATurretBuildingPart>(SpawnedPart);
+			if (TurretPart)
+			{
+				TurretPart->OnPlaced();
+			}
 		}
 
 		// Increase our count of placed building objects by 1
@@ -438,6 +446,11 @@ void APlayerChar::UpdateResources(int32 woodAmount, int32 stoneAmount, FString b
 	{
 		// Add 1 ceiling to our building inventory (index 2)
 		BuildingArray[2] += 1;
+	}
+	else if (buildingObject == "Turret")
+	{
+		// Add 1 turret to our building inventory (index 3)
+		BuildingArray[3] += 1;
 	}
 }
 

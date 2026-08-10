@@ -99,12 +99,12 @@ public:
 	// --- Building System Functions ---
 
 	// Subtracts wood and stone from our inventory and adds 1 to the matching building slot
-	// buildingObject is the name string ("Wall", "Floor", or "Ceiling") so we know which slot
+	// buildingObject is the name string ("Wall", "Floor", "Ceiling", or "Turret") so we know which slot
 	UFUNCTION(BlueprintCallable, Category = "Building")
 	void UpdateResources(int32 woodAmount, int32 stoneAmount, FString buildingObject);
 
 	// Spawns a building part 400 units ahead of the camera
-	// buildingID tells us which slot to check (0=Wall, 1=Floor, 2=Ceiling)
+	// buildingID tells us which slot to check (0=Wall, 1=Floor, 2=Ceiling, 3=Turret)
 	// isSuccess returns true if the spawn worked, false if we don't have enough parts
 	UFUNCTION(BlueprintCallable, Category = "Building")
 	void SpawnBuilding(int32 buildingID, bool& isSuccess);
@@ -153,7 +153,7 @@ public:
 	// --- Building System Variables ---
 
 	// Keeps track of how many of each building type we've crafted
-	// Index 0 = Walls, Index 1 = Floors, Index 2 = Ceilings
+	// Index 0 = Walls, Index 1 = Floors, Index 2 = Ceilings, Index 3 = Turrets
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Building")
 	TArray<int32> BuildingArray;
 
