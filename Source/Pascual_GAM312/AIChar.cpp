@@ -16,3 +16,17 @@ void AAIChar::BeginPlay()
 	// Always call the parent version first so Unreal can do its setup
 	Super::BeginPlay();
 }
+
+float AAIChar::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
+{
+	float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+
+	Health -= ActualDamage;
+
+	if (Health <= 0.0f)
+	{
+		Destroy();
+	}
+
+	return ActualDamage;
+}

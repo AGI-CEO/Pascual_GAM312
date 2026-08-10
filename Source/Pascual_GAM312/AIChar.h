@@ -18,6 +18,13 @@ public:
 	// Constructor — sets default values for this character
 	AAIChar();
 
+	// Current health of the AI enemy character
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
+	float Health = 100.0f;
+
+	// Called when this actor takes damage from projectiles or attacks
+	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+
 protected:
 	// Called when the game starts or when this actor is spawned
 	virtual void BeginPlay() override;
