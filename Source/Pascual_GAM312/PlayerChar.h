@@ -4,209 +4,187 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
-
-// We need this include so we can declare a UCameraComponent pointer below
 #include "Camera/CameraComponent.h"
-
-// Include our Resource master class so we can cast to it during line traces
 #include "Resource_M.h"
-
-// Include our BuildingPart class so we can spawn and manage building pieces
 #include "BuildingPart.h"
-
-// Include our PlayerWidget class so we can reference the HUD and call UpdateBars
 #include "PlayerWidget.h"
-
-// Include our ObjectiveWidget class so we can reference the objective HUD and update counters
 #include "ObjectiveWidget.h"
-
-// Include GameplayStatics so we can spawn decals when we hit resources
 #include "Kismet/GameplayStatics.h"
-
 #include "PlayerChar.generated.h"
 
-// This is our main Player Character class — it inherits from ACharacter,
-// which gives us built-in movement, collision, and animation support out of the box.
+// player character class that controls movement, stats, inventory, crafting, and interaction
 UCLASS()
 class PASCUAL_GAM312_API APlayerChar : public ACharacter
 {
 	GENERATED_BODY()
 
 public:
-	// Constructor — this is where we set up default values and create components
+	// constructor setting up components and default values
 	APlayerChar();
 
 protected:
-	// Runs once when the game starts or when this character is spawned into the world
+	// called when the game starts
 	virtual void BeginPlay() override;
 
 public:	
-	// Runs every single frame — useful for things that need constant updating
+	// called every frame
 	virtual void Tick(float DeltaTime) override;
 
-	// This is where we hook up our keyboard/mouse inputs to actual functions
+	// binds input keys to gameplay functions
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
-	// Handles forward and backward movement (W/S keys)
-	// The axisValue will be +1 for forward (W) or -1 for backward (S)
+	// moves player forward and backward
 	UFUNCTION()
 	void MoveForward(float axisValue);
 
-	// Handles left and right strafing (A/D keys)
-	// The axisValue will be -1 for left (A) or +1 for right (D)
+	// moves player left and right
 	UFUNCTION()
 	void MoveRight(float axisValue);
 
-	// Called when the player presses the jump button (Space Bar)
+	// starts jumping
 	UFUNCTION()
 	void StartJump();
 
-	// Called when the player releases the jump button (Space Bar)
+	// stops jumping
 	UFUNCTION()
 	void StopJump();
 
-	// Does a Line Trace forward from the camera to detect and interact with resources
-	// Gets triggered by the Left Mouse Button ("Interact" input)
+	// performs line trace to interact with resources or place buildings
 	UFUNCTION()
 	void FindObject();
 
-	// --- Player Stat Functions ---
-	// These let us change our stats from anywhere (Blueprints or C++)
-	// Pass in a positive number to add, or a negative number to subtract
+	// --- player stat functions ---
 
-	// Adjusts the player's health by the given amount (won't go above 100)
+	// changes health by amount and clamps between 0 and 100
 	UFUNCTION(BlueprintCallable, Category = "Player Stats")
 	void SetHealth(float amount);
 
-	// Adjusts the player's hunger by the given amount (won't go above 100)
+	// changes hunger by amount and clamps between 0 and 100
 	UFUNCTION(BlueprintCallable, Category = "Player Stats")
 	void SetHunger(float amount);
 
-	// Adjusts the player's stamina by the given amount (won't go above 100)
+	// changes stamina by amount and clamps between 0 and 100
 	UFUNCTION(BlueprintCallable, Category = "Player Stats")
 	void SetStamina(float amount);
 
-	// Called on a timer every 2 seconds — decreases hunger over time,
-	// regenerates stamina, and damages health if hunger hits 0
+	// timer function that drains hunger and regenerates stamina over time
 	UFUNCTION(BlueprintCallable, Category = "Player Stats")
 	void DecreaseStats();
 
-	// Adds collected resources to the right inventory slot based on type name
-	// (e.g. "Wood" goes to index 0, "Stone" to index 1, "Berry" to index 2)
+	// eats a berry from inventory to restore hunger and stamina
+	UFUNCTION(BlueprintCallable, Category = "Player Stats")
+	void EatBerry();
+
+	// handles taking damage from starvation or external attacks
+	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+
+	// called when player dies
+	void Die();
+
+	// blueprint event triggered on death to show the lose widget
+	UFUNCTION(BlueprintImplementableEvent, Category = "Player Stats")
+	void OnPlayerDeath();
+
+	// adds collected resources to inventory array
 	UFUNCTION(BlueprintCallable, Category = "Resources")
 	void GiveResource(int32 amount, FString resourceType);
 
-	// --- Building System Functions ---
+	// --- building system functions ---
 
-	// Subtracts wood and stone from our inventory and adds 1 to the matching building slot
-	// buildingObject is the name string ("Wall", "Floor", "Ceiling", or "Turret") so we know which slot
+	// spends wood and stone to craft building parts
 	UFUNCTION(BlueprintCallable, Category = "Building")
 	void UpdateResources(int32 woodAmount, int32 stoneAmount, FString buildingObject);
 
-	// Spawns a building part 400 units ahead of the camera
-	// buildingID tells us which slot to check (0=Wall, 1=Floor, 2=Ceiling, 3=Turret)
-	// isSuccess returns true if the spawn worked, false if we don't have enough parts
+	// spawns a building part ahead of the player for placement
 	UFUNCTION(BlueprintCallable, Category = "Building")
 	void SpawnBuilding(int32 buildingID, bool& isSuccess);
 
-	// Rotates the currently held building part by 90 degrees — bound to the E key
+	// rotates held building part by 90 degrees
 	UFUNCTION()
 	void RotateBuilding();
 
-	// --- Player Stat Variables ---
-	// These track the player's current health, hunger, and stamina
-	// All start at 100 and can go up or down during gameplay
+	// --- player stat variables ---
 
-	// How much health the player has — drops when hunger reaches 0
+	// player health points (0 to 100)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Player Stats")
 	float Health = 100.0f;
 
-	// How full the player is — goes down over time on its own
+	// player hunger level (0 to 100)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Player Stats")
 	float Hunger = 100.0f;
 
-	// How much energy the player has — used up when hitting resources,
-	// but slowly regenerates over time
+	// player stamina energy (0 to 100)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Player Stats")
 	float Stamina = 100.0f;
 
-	// --- Resource Inventory Variables ---
-	// These track how much of each resource the player has collected
+	// tracks if the player has run out of health
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Player Stats")
+	bool bIsDead = false;
 
-	// How much wood the player has gathered
+	// --- resource inventory variables ---
+
+	// wood inventory count
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Resources")
 	int32 Wood = 0;
 
-	// How much stone the player has gathered
+	// stone inventory count
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Resources")
 	int32 Stone = 0;
 
-	// How many berries the player has gathered
+	// berry inventory count
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Resources")
 	int32 Berry = 0;
 
-	// Array that holds all resource counts in one place
-	// Index 0 = Wood, Index 1 = Stone, Index 2 = Berry
+	// array holding all resource counts (0=wood, 1=stone, 2=berry)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Resources")
 	TArray<int32> ResourcesArray;
 
-	// --- Building System Variables ---
+	// --- building system variables ---
 
-	// Keeps track of how many of each building type we've crafted
-	// Index 0 = Walls, Index 1 = Floors, Index 2 = Ceilings, Index 3 = Turrets
+	// array holding crafted building counts (0=walls, 1=floors, 2=ceilings, 3=turrets)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Building")
 	TArray<int32> BuildingArray;
 
-	// Whether we're currently in building mode (placing a part)
-	// When true, clicking places the part instead of collecting resources
+	// true when currently positioning a building part
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Building")
 	bool isBuilding = false;
 
-	// This lets us pick which child Blueprint to spawn (Wall_BP, Floor_BP, or Ceiling_BP)
-	// TSubclassOf means we can set it to any class that inherits from ABuildingPart
+	// class of building part to spawn
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Building")
 	TSubclassOf<ABuildingPart> BuildPartClass;
 
-	// A pointer to our Player Widget HUD — we set this in the Player Blueprint's BeginPlay
-	// so we can call UpdateBars() on it every frame to keep the progress bars up to date
+	// reference to player status hud widget
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Player HUD")
 	UPlayerWidget* PlayerUI;
 
-	// A pointer to our Objective Widget HUD — we set this in the Player Blueprint's BeginPlay
-	// so we can update our material and build objective progress on screen
+	// reference to objective hud widget
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Player HUD")
 	UObjectiveWidget* ObjectWidget;
 
-	// Tracks how many building parts the player has successfully placed towards the objective
+	// count of placed building parts towards objective
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Objectives")
 	float ObjectsBuilt = 0.0f;
 
-	// Tracks total materials gathered by the player towards the 500 material objective
+	// count of total collected materials towards objective
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Objectives")
 	float MatsCollected = 0.0f;
 
-	// A pointer to the building part we just spawned — we use this to move it
-	// around in Tick and to rotate it when the player presses E
+	// pointer to building part currently being placed
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Building")
 	ABuildingPart* SpawnedPart;
 
-	// Array of resource names that matches up with ResourcesArray
-	// So ResourceNames[0] = "Wood" matches ResourcesArray[0] = wood count
+	// list of resource names matching array indices
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Resources")
 	TArray<FString> ResourceNames;
 
-	// --- Decal Material ---
-	// This is the material that spawns as a decal where our line trace hits
-	// Set this in the Blueprint to the red hit decal material you create
+	// decal material spawned when hitting resources
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Player Stats")
 	UMaterialInterface* HitDecal;
 
-	// Our first-person camera — this gets attached to the character's head
-	// so the player can look down and see their own body
+	// first person camera attached to character head
 	UPROPERTY(VisibleAnywhere)
 	UCameraComponent* PlayerCameraComponent;
 
-	// Timer handle for the DecreaseStats function — ticks every 2 seconds
-	// to drain hunger, regen stamina, and apply damage if starving
+	// repeating timer handle for decreasing stats
 	FTimerHandle StatsTimerHandle;
 };

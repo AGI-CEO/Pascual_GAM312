@@ -1,67 +1,57 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "PlayerChar.h"
 #include "TurretBuildingPart.h"
-
-// We need this include so we can use GetWorld()->GetTimerManager()
 #include "TimerManager.h"
+#include "Engine/DamageEvents.h"
 
-// Constructor — runs when the character is first created (before the game even starts)
+// ============================================================================
+// camera use in game development:
+// camera libraries in game engines take 3d world coordinates and convert them
+// into 2d screen pixels using view and projection matrices. attaching a camera
+// component to the character mesh head socket creates a true first-person point
+// of view where the camera tracks player head animations and mouse rotation.
+// ============================================================================
+
 APlayerChar::APlayerChar()
 {
- 	// Allow this character to run Tick() every frame (we can disable this later for performance)
+	// allow tick every frame for placement updates
 	PrimaryActorTick.bCanEverTick = true;
 
-	// Create the camera component and give it a name that shows up in the editor
+	// create the first-person camera component
 	PlayerCameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("PlayerCameraComponent"));
 
-	// Attach the camera to the skeletal mesh's "head" socket
-	// This way it moves with the character's head, giving us a true first-person perspective
-	// where the player can look down and see their own body
+	// attach camera to head socket so view matches character head movement
 	PlayerCameraComponent->SetupAttachment(GetMesh(), FName("head"));
 
-	// Make the camera rotate with the player's controller input (mouse movement)
-	// Without this, moving the mouse wouldn't actually rotate the camera view
+	// enable pawn control rotation so mouse movement rotates the camera view
 	PlayerCameraComponent->bUsePawnControlRotation = true;
 
-	// --- Set up our Resource Arrays ---
-	// We use arrays so we can manage all resources in one place
-	// Index 0 = Wood, Index 1 = Stone, Index 2 = Berry
-
-	// Create 3 empty slots in the resources array (all start at 0)
+	// set up 3 slots for resources: 0 = wood, 1 = stone, 2 = berry
 	ResourcesArray.SetNum(3);
-
-	// Set up the name array so we know which index is which resource
 	ResourceNames.SetNum(3);
 	ResourceNames[0] = "Wood";
 	ResourceNames[1] = "Stone";
 	ResourceNames[2] = "Berry";
 
-	// Create 4 empty slots in the building array (all start at 0)
-	// Index 0 = Walls, Index 1 = Floors, Index 2 = Ceilings, Index 3 = Turrets
+	// set up 4 slots for building parts: 0 = wall, 1 = floor, 2 = ceiling, 3 = turret
 	BuildingArray.SetNum(4);
 }
 
-// Called once when the game starts — good place to initialize runtime stuff
 void APlayerChar::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// Start a repeating timer that calls DecreaseStats() every 2 seconds
-	// This makes hunger go down over time and handles stamina regen
-	// "this" means we're calling a function on this player character
+	// timer calls DecreaseStats every 2 seconds to drain hunger and regenerate stamina
 	GetWorld()->GetTimerManager().SetTimer(
-		StatsTimerHandle,       // The timer handle we declared in the header
-		this,                   // The object that owns the function (our player)
-		&APlayerChar::DecreaseStats, // The function to call every tick
-		2.0f,                   // How often to call it (every 2 seconds)
-		true                    // true = keep repeating, false = only fire once
+		StatsTimerHandle,
+		this,
+		&APlayerChar::DecreaseStats,
+		2.0f,
+		true
 	);
 
-	// --- Initial Objective Widget Setup ---
-	// Check if our Objective Widget pointer has been set (assigned in Blueprint).
-	// If valid, initialize our HUD counters to 0 when the game starts.
+	// initialize objective counters on hud
 	if (ObjectWidget)
 	{
 		ObjectWidget->UpdateMatObjectives(MatsCollected);
@@ -69,218 +59,231 @@ void APlayerChar::BeginPlay()
 	}
 }
 
-// Called every frame — DeltaTime tells us how much time passed since the last frame
 void APlayerChar::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	// --- Building Placement Preview ---
-	// When we're in building mode and have a valid spawned part,
-	// move it to stay 400 units in front of the camera so it follows where we look
+	// ========================================================================
+	// linear algebra in gaming (preview placement):
+	// we use vector addition and scalar multiplication to place an object in
+	// front of the player. CamLocation is a point in 3d space (x,y,z), and
+	// CamForward is a normalized direction vector (length of 1). multiplying
+	// CamForward by 400 extends the vector 400 units, and adding it to
+	// CamLocation gives the target 3d point in world space.
+	// ========================================================================
 	if (isBuilding && SpawnedPart)
 	{
-		// Get where the camera is and which way it's pointing
 		FVector CamLocation = PlayerCameraComponent->GetComponentLocation();
 		FVector CamForward = PlayerCameraComponent->GetForwardVector();
-
-		// Calculate a point 400 units ahead of the camera
 		FVector PlaceLocation = CamLocation + (CamForward * 400.0f);
 
-		// Move the building part to that point so it follows our view
 		SpawnedPart->SetActorLocation(PlaceLocation);
 	}
 
-	// --- Update HUD Bars ---
-	// Every frame, send our current Health, Hunger, and Stamina values
-	// to the Player Widget so the progress bars on screen stay up to date.
-	// We check if PlayerUI exists first to avoid crashing if the widget
-	// hasn't been created yet (like during the very first frame).
+	// update hud bars every frame
 	if (PlayerUI)
 	{
 		PlayerUI->UpdateBars(Health, Hunger, Stamina);
 	}
 }
 
-// This is where we connect our input mappings (from Project Settings) to our C++ functions
 void APlayerChar::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 
-	// --- Axis Inputs (these fire every frame and pass in a float value) ---
-
-	// W/S keys — calls our MoveForward function with +1 or -1
+	// movement axis bindings
 	PlayerInputComponent->BindAxis("MoveForward", this, &APlayerChar::MoveForward);
-
-	// A/D keys — calls our MoveRight function with -1 or +1
 	PlayerInputComponent->BindAxis("MoveRight", this, &APlayerChar::MoveRight);
 
-	// Mouse Y axis — we use the built-in AddControllerPitchInput so we don't need a custom function
-	// This handles looking up and down
+	// mouse look axis bindings
 	PlayerInputComponent->BindAxis("LookUp", this, &APawn::AddControllerPitchInput);
-
-	// Mouse X axis — same idea, built-in AddControllerYawInput handles looking left and right
 	PlayerInputComponent->BindAxis("Turn", this, &APawn::AddControllerYawInput);
 
-	// --- Action Inputs (these fire once on key press/release) ---
-
-	// When Space Bar is pressed, start jumping
+	// action bindings for jumping, interacting, and building rotation
 	PlayerInputComponent->BindAction("JumpEvent", IE_Pressed, this, &APlayerChar::StartJump);
-
-	// When Space Bar is released, stop jumping (so we don't jump forever)
 	PlayerInputComponent->BindAction("JumpEvent", IE_Released, this, &APlayerChar::StopJump);
-
-	// When Left Mouse Button is pressed, do a line trace to find and interact with objects
 	PlayerInputComponent->BindAction("Interact", IE_Pressed, this, &APlayerChar::FindObject);
-
-	// When the E key is pressed, rotate the building part we're holding by 90 degrees
 	PlayerInputComponent->BindAction("RotPart", IE_Pressed, this, &APlayerChar::RotateBuilding);
 }
 
-// Moves the character forward or backward based on where they're currently looking
+// ============================================================================
+// linear algebra in gaming (movement & rotation matrices):
+// rotation matrices take the player look angle and convert it into directional
+// basis vectors. the x axis gives the forward vector, and the y axis gives the
+// right vector. AddMovementInput scales these unit vectors by axisValue to move
+// the character in the proper world direction.
+// ============================================================================
 void APlayerChar::MoveForward(float axisValue)
 {
-	// Build a rotation matrix from the controller's current rotation (where we're looking),
-	// then grab the forward direction vector (X axis) from it
-	FVector Direction = FRotationMatrix(Controller->GetControlRotation()).GetUnitAxis(EAxis::X);
+	if (bIsDead) return;
 
-	// Apply movement in that direction — axisValue of +1 moves forward, -1 moves backward
+	FVector Direction = FRotationMatrix(Controller->GetControlRotation()).GetUnitAxis(EAxis::X);
 	AddMovementInput(Direction, axisValue);
 }
 
-// Moves the character left or right based on where they're currently looking
 void APlayerChar::MoveRight(float axisValue)
 {
-	// Same idea as MoveForward, but we grab the right direction vector (Y axis) instead
-	FVector Direction = FRotationMatrix(Controller->GetControlRotation()).GetUnitAxis(EAxis::Y);
+	if (bIsDead) return;
 
-	// Apply movement — axisValue of +1 strafes right, -1 strafes left
+	FVector Direction = FRotationMatrix(Controller->GetControlRotation()).GetUnitAxis(EAxis::Y);
 	AddMovementInput(Direction, axisValue);
 }
 
-// Triggers the jump — ACharacter already has a built-in Jump() function, so we just call it
 void APlayerChar::StartJump()
 {
+	if (bIsDead) return;
 	Jump();
 }
 
-// Stops the jump when the player lets go of the button
 void APlayerChar::StopJump()
 {
 	StopJumping();
 }
 
 // ============================================================================
-// PLAYER STAT FUNCTIONS
-// These functions adjust our player's Health, Hunger, and Stamina values.
-// We clamp them so they never go above 100 (but they can go below 0).
-// Pass in a positive number to increase, or a negative number to decrease.
+// player stat management:
+// clamps stats between 0 and 100 to prevent going over maximum or under zero
 // ============================================================================
 
-// Adds (or subtracts) from the player's health
-// Won't let health go above 100
 void APlayerChar::SetHealth(float amount)
 {
-	// Only add if the result would be under 100 — prevents overheal
-	if (Health + amount < 100)
+	Health = FMath::Clamp(Health + amount, 0.0f, 100.0f);
+
+	if (Health <= 0.0f && !bIsDead)
 	{
-		Health += amount;
+		Die();
 	}
 }
 
-// Adds (or subtracts) from the player's hunger
-// Won't let hunger go above 100
 void APlayerChar::SetHunger(float amount)
 {
-	// Only add if the result would be under 100 — prevents overfeeding
-	if (Hunger + amount < 100)
-	{
-		Hunger += amount;
-	}
+	Hunger = FMath::Clamp(Hunger + amount, 0.0f, 100.0f);
 }
 
-// Adds (or subtracts) from the player's stamina
-// Won't let stamina go above 100
 void APlayerChar::SetStamina(float amount)
 {
-	// Only add if the result would be under 100 — prevents going over max
-	if (Stamina + amount < 100)
-	{
-		Stamina += amount;
-	}
+	Stamina = FMath::Clamp(Stamina + amount, 0.0f, 100.0f);
 }
 
-// This runs every 2 seconds on a timer (set up in BeginPlay)
-// It handles:
-//   1. Hunger slowly going down over time
-//   2. Stamina slowly regenerating over time (if not starving)
-//   3. Health going down when hunger reaches 0
+// drains hunger every 2 seconds, regens stamina, or damages player if starving
 void APlayerChar::DecreaseStats()
 {
-	// Subtract 1 from hunger every 2 seconds — the player is always getting hungrier
+	if (bIsDead) return;
+
+	// drain hunger gradually over time
 	SetHunger(-1.0f);
 
-	// If the player still has food in their belly, regenerate some stamina
-	if (Hunger > 0)
+	// regenerate stamina if player is not starving
+	if (Hunger > 0.0f)
 	{
 		SetStamina(2.0f);
 	}
-
-	// If hunger hit 0 or below, start taking damage — you're starving!
-	if (Hunger <= 0)
+	else
 	{
-		SetHealth(-1.0f);
+		// player takes damage when starving at 0 hunger
+		SetHealth(-2.0f);
 	}
 }
 
-// ============================================================================
-// RESOURCE COLLECTION
-// GiveResource adds resources to the right inventory slot based on the name.
-// FindObject does a line trace from the camera to detect and collect resources.
-// ============================================================================
+// eats one berry from inventory to restore hunger and stamina
+void APlayerChar::EatBerry()
+{
+	if (bIsDead) return;
 
-// Adds resources to the correct inventory slot based on the resource type name
-// "Wood" goes to index 0, "Stone" goes to index 1, "Berry" goes to index 2
+	// check if player has berries in inventory (index 2)
+	if (ResourcesArray.IsValidIndex(2) && ResourcesArray[2] > 0)
+	{
+		ResourcesArray[2] -= 1;
+		Berry = ResourcesArray[2];
+
+		// restore hunger and stamina clamped to max 100
+		SetHunger(25.0f);
+		SetStamina(15.0f);
+
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, TEXT("Ate berry: +25 hunger, +15 stamina"));
+		}
+	}
+	else
+	{
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, TEXT("No berries in inventory!"));
+		}
+	}
+}
+
+// handles damage from external sources like ai attacks
+float APlayerChar::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
+{
+	float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+
+	if (!bIsDead)
+	{
+		SetHealth(-ActualDamage);
+	}
+
+	return ActualDamage;
+}
+
+// handles player death and triggers lose widget
+void APlayerChar::Die()
+{
+	bIsDead = true;
+	Health = 0.0f;
+
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 4.0f, FColor::Red, TEXT("Player died! Game Over."));
+	}
+
+	// call blueprint event to display win/lose screen
+	OnPlayerDeath();
+}
+
+// adds collected resources to the matching inventory slot
 void APlayerChar::GiveResource(int32 amount, FString resourceType)
 {
-	// Check which resource type we're collecting and add to the right slot
 	if (resourceType == "Wood")
 	{
-		// Add to the Wood slot (index 0)
 		ResourcesArray[0] += amount;
+		Wood = ResourcesArray[0];
 	}
 	else if (resourceType == "Stone")
 	{
-		// Add to the Stone slot (index 1)
 		ResourcesArray[1] += amount;
+		Stone = ResourcesArray[1];
 	}
 	else if (resourceType == "Berry")
 	{
-		// Add to the Berry slot (index 2)
 		ResourcesArray[2] += amount;
+		Berry = ResourcesArray[2];
 	}
 }
 
-// This is our main interaction function — it shoots a line trace forward from
-// the camera and checks if we hit a resource object. If we did, it collects
-// from it, spawns a decal, and destroys the resource when it's empty.
-// BUT if we're in building mode, clicking will PLACE the building instead.
+// ============================================================================
+// trace and collision in gaming:
+// line tracing (raycasting) projects a ray from a start vector to an end vector
+// through the physics scene. the physics engine tests bounding boxes and polygon
+// meshes along the ray using collision channels like ECC_Visibility. when an
+// intersection occurs, HitResult returns hit coordinates, surface normals, and
+// actor pointers so we can collect resources accurately.
+// ============================================================================
 void APlayerChar::FindObject()
 {
-	// --- Building Mode Check ---
-	// If we're currently placing a building, clicking should stop placement
-	// instead of doing the resource trace
+	if (bIsDead) return;
+
+	// if placing a building, clicking places the object down
 	if (isBuilding)
 	{
-		// We clicked while in building mode — place the part and stop building
 		isBuilding = false;
 
-		// Now that the part is placed, turn collision back on
-		// so the player can't walk through it anymore
 		if (SpawnedPart)
 		{
 			SpawnedPart->Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 
-			// If this is a turret, notify it that it has been placed so it activates targeting & firing
+			// if placing a turret, activate its targeting and firing
 			ATurretBuildingPart* TurretPart = Cast<ATurretBuildingPart>(SpawnedPart);
 			if (TurretPart)
 			{
@@ -288,10 +291,9 @@ void APlayerChar::FindObject()
 			}
 		}
 
-		// Increase our count of placed building objects by 1
+		// update building objective count
 		ObjectsBuilt += 1.0f;
 
-		// If our objective widget exists, trigger the update event with our new build count
 		if (ObjectWidget)
 		{
 			ObjectWidget->UpdateBuildObject(ObjectsBuilt);
@@ -300,86 +302,52 @@ void APlayerChar::FindObject()
 		return;
 	}
 
-	// --- Normal Resource Collection ---
-	// Only allow interaction if we have enough stamina (need at least 5)
-	if (Stamina > 5)
+	// resource harvesting costs 5 stamina per hit
+	if (Stamina >= 5.0f)
 	{
-		// Subtract 5 stamina every time we swing/interact
 		SetStamina(-5.0f);
 
-		// --- Set up the Line Trace ---
-		// A line trace is like shooting an invisible laser forward from the camera
-		// to see what it hits
-
-		// This will store info about whatever our trace hits
 		FHitResult HitResult;
-
-		// Start the trace from where the camera is in the world
 		FVector StartLocation = PlayerCameraComponent->GetComponentLocation();
-
-		// Get the direction the camera is facing and extend it 800 units out
-		// (800 units is about how far the player can reach)
-		FVector Direction = PlayerCameraComponent->GetForwardVector() * 800;
-
-		// The end point is the start plus the direction — that's where the trace stops
+		FVector Direction = PlayerCameraComponent->GetForwardVector() * 800.0f;
 		FVector EndLocation = StartLocation + Direction;
 
-		// Set up collision query parameters for the trace
 		FCollisionQueryParams QueryParams;
-
-		// Tell the trace to ignore our own player — we don't want to hit ourselves!
 		QueryParams.AddIgnoredActor(this);
-
-		// Enable complex collision for more accurate hit detection
 		QueryParams.bTraceComplex = true;
-
-		// Allow face index to be returned (lets us get surface normal info if needed)
 		QueryParams.bReturnFaceIndex = true;
 
-		// Actually shoot the line trace into the world
-		// We use the Visibility trace channel (ECC_Visibility) which is the default
+		// cast line trace using visibility channel
 		GetWorld()->LineTraceSingleByChannel(
-			HitResult,            // Where to store the hit info
-			StartLocation,        // Where the trace starts
-			EndLocation,          // Where the trace ends
-			ECC_Visibility,       // Which collision channel to use
-			QueryParams           // Our collision settings (ignore self, etc.)
+			HitResult,
+			StartLocation,
+			EndLocation,
+			ECC_Visibility,
+			QueryParams
 		);
 
-		// --- Try to cast what we hit to a Resource ---
-		// Cast means "check if this actor is actually a Resource_M type"
-		// If it is, we get a pointer to it. If not, HitResource will be null.
 		AResource_M* HitResource = Cast<AResource_M>(HitResult.GetActor());
 
-		// Make sure we actually hit a valid resource (not a wall or the ground)
-		// If we skip this check and hit something that's NOT a resource, the game crashes
 		if (HitResource)
 		{
-			// Get the name of the resource we hit (e.g. "Wood", "Stone", "Berry")
 			FString hitName = HitResource->resourceName;
-
-			// Get how much this resource gives us per hit
 			int32 resourceValue = HitResource->resourceAmount;
 
-			// Always give the player the resources when they hit
+			// add resources to inventory
 			GiveResource(resourceValue, hitName);
 
-			// Add the collected resource amount to our total materials collected counter
+			// update total collected materials objective
 			MatsCollected += static_cast<float>(resourceValue);
-
-			// If our objective widget exists, update the HUD material counter
 			if (ObjectWidget)
 			{
 				ObjectWidget->UpdateMatObjectives(MatsCollected);
 			}
 
-			// Subtract the amount we're taking from the resource's total supply
-			HitResource->totalResource = HitResource->totalResource - resourceValue;
+			// deduct resource pool and destroy node when depleted
+			HitResource->totalResource -= resourceValue;
 
-			// Check if the resource still has stuff left
 			if (HitResource->totalResource > 0)
 			{
-				// Resource still has supply — show collected message
 				if (GEngine)
 				{
 					GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, TEXT("Resource Collected"));
@@ -387,136 +355,96 @@ void APlayerChar::FindObject()
 			}
 			else
 			{
-				// Resource is empty — destroy the object and show depleted message
 				HitResource->Destroy();
-
 				if (GEngine)
 				{
 					GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("Resource Depleted"));
 				}
 			}
 
-			// --- Spawn a Decal at the Hit Location ---
-			// This creates a visual indicator (like a red circle) where we hit the resource
-			// The decal only shows up if we assigned a material in the Blueprint
+			// spawn hit decal at hit point
 			if (HitDecal)
 			{
 				UGameplayStatics::SpawnDecalAtLocation(
-					GetWorld(),                        // The world to spawn in
-					HitDecal,                          // The decal material (set in Blueprint)
-					FVector(10.0f, 10.0f, 10.0f),     // Size of the decal (10x10x10)
-					HitResult.Location,                // Where the line trace hit
-					FRotator(-90.0f, 0.0f, 0.0f),     // Rotation (face flat on surface)
-					2.0f                               // How long the decal lasts (2 seconds)
+					GetWorld(),
+					HitDecal,
+					FVector(10.0f, 10.0f, 10.0f),
+					HitResult.Location,
+					FRotator(-90.0f, 0.0f, 0.0f),
+					2.0f
 				);
 			}
 		}
 	}
 }
 
-// ============================================================================
-// BUILDING SYSTEM FUNCTIONS
-// These handle crafting items, spawning building parts, and rotating them.
-// ============================================================================
-
-// Subtracts the crafting cost from our resources and adds 1 to the correct building slot.
-// woodAmount = how much wood this item costs to craft
-// stoneAmount = how much stone this item costs to craft
-// buildingObject = the name ("Wall", "Floor", or "Ceiling") to match the right slot
+// subtracts crafting materials and adds crafted item to building array
 void APlayerChar::UpdateResources(int32 woodAmount, int32 stoneAmount, FString buildingObject)
 {
-	// Subtract the wood cost from our wood supply (index 0)
 	ResourcesArray[0] -= woodAmount;
+	Wood = ResourcesArray[0];
 
-	// Subtract the stone cost from our stone supply (index 1)
 	ResourcesArray[1] -= stoneAmount;
+	Stone = ResourcesArray[1];
 
-	// Figure out which building slot to add to based on the name string
 	if (buildingObject == "Wall")
 	{
-		// Add 1 wall to our building inventory (index 0)
 		BuildingArray[0] += 1;
 	}
 	else if (buildingObject == "Floor")
 	{
-		// Add 1 floor to our building inventory (index 1)
 		BuildingArray[1] += 1;
 	}
 	else if (buildingObject == "Ceiling")
 	{
-		// Add 1 ceiling to our building inventory (index 2)
 		BuildingArray[2] += 1;
 	}
 	else if (buildingObject == "Turret")
 	{
-		// Add 1 turret to our building inventory (index 3)
 		BuildingArray[3] += 1;
 	}
 }
 
-// Spawns a building part into the world 400 units ahead of the camera.
-// buildingID = which slot to check (0=Wall, 1=Floor, 2=Ceiling)
-// isSuccess = output — true if we spawned it, false if we don't have any
+// spawns building part 400 units in front of player for placement
 void APlayerChar::SpawnBuilding(int32 buildingID, bool& isSuccess)
 {
-	// Only spawn if we're not already placing something
-	if (!isBuilding)
+	if (!isBuilding && BuildingArray.IsValidIndex(buildingID) && BuildingArray[buildingID] > 0)
 	{
-		// Check if we actually have at least 1 of this building type
-		if (BuildingArray[buildingID] > 0)
+		isBuilding = true;
+
+		FVector CamLocation = PlayerCameraComponent->GetComponentLocation();
+		FVector CamForward = PlayerCameraComponent->GetForwardVector();
+		FVector SpawnLocation = CamLocation + (CamForward * 400.0f);
+		FRotator SpawnRotation = FRotator::ZeroRotator;
+
+		FActorSpawnParameters SpawnParams;
+		BuildingArray[buildingID] -= 1;
+
+		SpawnedPart = GetWorld()->SpawnActor<ABuildingPart>(
+			BuildPartClass,
+			SpawnLocation,
+			SpawnRotation,
+			SpawnParams
+		);
+
+		// disable collision during preview movement so it doesn't push the player
+		if (SpawnedPart)
 		{
-			// We're now in building/placement mode
-			isBuilding = true;
-
-			// Calculate a position 400 units ahead of the camera to spawn at
-			FVector CamLocation = PlayerCameraComponent->GetComponentLocation();
-			FVector CamForward = PlayerCameraComponent->GetForwardVector();
-			FVector SpawnLocation = CamLocation + (CamForward * 400.0f);
-
-			// Start with zero rotation — the player can rotate with E later
-			FRotator SpawnRotation = FRotator::ZeroRotator;
-
-			// Set up spawn parameters (default settings are fine)
-			FActorSpawnParameters SpawnParams;
-
-			// Subtract 1 from the building slot since we're using it up
-			BuildingArray[buildingID] -= 1;
-
-			// Actually spawn the actor into the world
-			// BuildPartClass is set from the Widget to the correct child BP
-			SpawnedPart = GetWorld()->SpawnActor<ABuildingPart>(
-				BuildPartClass,    // Which Blueprint class to spawn (Wall_BP, Floor_BP, etc.)
-				SpawnLocation,     // Where to put it initially
-				SpawnRotation,     // Starting rotation (zero)
-				SpawnParams        // Extra spawn settings
-			);
-
-			// Turn off collision while we're moving it around
-			// so it doesn't push the player while floating in front of the camera
-			if (SpawnedPart)
-			{
-				SpawnedPart->Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-			}
-
-			// Tell the Widget that the spawn was successful
-			isSuccess = true;
-			return;
+			SpawnedPart->Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		}
+
+		isSuccess = true;
+		return;
 	}
 
-	// If we get here, either we're already building or we don't have any — spawn failed
 	isSuccess = false;
 }
 
-// Rotates the building part we're currently holding by 90 degrees.
-// This is bound to the E key so the player can orient walls and floors.
+// rotates currently held building part by 90 degrees yaw
 void APlayerChar::RotateBuilding()
 {
-	// Only rotate if we're actually holding a building part
 	if (SpawnedPart)
 	{
-		// Add 90 degrees to the yaw (left-right rotation)
-		// Pitch = 0 (no tilt), Yaw = 90 (turn), Roll = 0 (no roll)
 		SpawnedPart->AddActorLocalRotation(FRotator(0.0f, 90.0f, 0.0f));
 	}
 }
