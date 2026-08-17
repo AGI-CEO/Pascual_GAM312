@@ -7,11 +7,9 @@
 #include "TurretBuildingPart.generated.h"
 
 class ATurretProjectile;
-class AAIChar;
 
-// TurretBuildingPart inherits from ABuildingPart so it can be crafted and placed
-// using the existing building placement system. When placed, it scans for enemy AI
-// characters (AAIChar) within range, rotates towards them, and fires projectiles.
+// turret building part that can be crafted and placed. when active, it scans side-to-side,
+// tracks enemy ai characters, and fires projectiles.
 UCLASS()
 class PASCUAL_GAM312_API ATurretBuildingPart : public ABuildingPart
 {
@@ -26,49 +24,55 @@ protected:
 public:
 	virtual void Tick(float DeltaTime) override;
 
-	// Spawn location for projectiles (e.g. end of the turret barrel)
+	// muzzle component attachment point for spawning projectiles
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Turret")
 	USceneComponent* MuzzleComponent;
 
-	// The projectile Blueprint class to spawn when firing
+	// projectile class to spawn when firing
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Turret")
 	TSubclassOf<ATurretProjectile> ProjectileClass;
 
-	// Time in seconds between shots (default 1.0s)
+	// time between shots in seconds
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Turret")
 	float FireInterval = 1.0f;
 
-	// Maximum distance to detect and engage enemy targets
+	// maximum detection range for enemies
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Turret")
-	float TargetRange = 1000.0f;
+	float TargetRange = 3000.0f;
 
-	// Rotation speed when tracking targets (degrees per second)
+	// rotation tracking speed
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Turret")
-	float RotationSpeed = 5.0f;
+	float RotationSpeed = 8.0f;
 
-	// Whether the turret is placed in the world (active) or currently in placement preview mode
+	// whether turret is active and placed in the world
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Turret")
 	bool bIsPlaced = false;
 
-	// Called when player confirms placement of the turret
+	// called when turret is placed
 	UFUNCTION(BlueprintCallable, Category = "Turret")
 	void OnPlaced();
 
-	// Function called on a timer to fire projectiles at the current target
+	// fires projectile at target
 	UFUNCTION()
 	void FireProjectile();
 
 private:
-	// Find nearest AAIChar target within TargetRange
+	// finds nearest enemy character within range
 	void FindTarget();
 
-	// Rotate turret towards current target
+	// rotates turret to face current target
 	void RotateTowardsTarget(float DeltaTime);
 
-	// Timer handle for continuous firing
+	// idle scanning motion side-to-side
+	void IdleScan(float DeltaTime);
+
+	// timer handle for firing
 	FTimerHandle FireTimerHandle;
 
-	// Pointer to current enemy target
+	// pointer to current target actor
 	UPROPERTY()
-	AAIChar* CurrentTarget = nullptr;
+	AActor* CurrentTarget = nullptr;
+
+	// base yaw angle captured when placed
+	float BasePlacementYaw = 0.0f;
 };
