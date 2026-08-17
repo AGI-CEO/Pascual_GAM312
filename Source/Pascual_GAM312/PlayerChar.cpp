@@ -7,34 +7,26 @@
 
 // ============================================================================
 // camera use in game development:
-// camera libraries in game engines take 3d world coordinates and convert them
-// into 2d screen pixels using view and projection matrices. attaching a camera
-// component to the character mesh head socket creates a true first-person point
-// of view where the camera tracks player head animations and mouse rotation.
+// camera libraries in game engines convert 3d world coordinates into 2d screen
+// pixels using view and projection matrices. attaching a camera component to the
+// character head socket creates a true first-person perspective that moves with
+// head animations and rotates with mouse input.
 // ============================================================================
 
 APlayerChar::APlayerChar()
 {
-	// allow tick every frame for placement updates
 	PrimaryActorTick.bCanEverTick = true;
 
-	// create the first-person camera component
 	PlayerCameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("PlayerCameraComponent"));
-
-	// attach camera to head socket so view matches character head movement
 	PlayerCameraComponent->SetupAttachment(GetMesh(), FName("head"));
-
-	// enable pawn control rotation so mouse movement rotates the camera view
 	PlayerCameraComponent->bUsePawnControlRotation = true;
 
-	// set up 3 slots for resources: 0 = wood, 1 = stone, 2 = berry
 	ResourcesArray.SetNum(3);
 	ResourceNames.SetNum(3);
 	ResourceNames[0] = "Wood";
 	ResourceNames[1] = "Stone";
 	ResourceNames[2] = "Berry";
 
-	// set up 4 slots for building parts: 0 = wall, 1 = floor, 2 = ceiling, 3 = turret
 	BuildingArray.SetNum(4);
 }
 
@@ -42,7 +34,23 @@ void APlayerChar::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// timer calls DecreaseStats every 2 seconds to drain hunger and regenerate stamina
+	// ensure resource and building arrays are properly initialized
+	if (ResourcesArray.Num() < 3)
+	{
+		ResourcesArray.SetNum(3);
+	}
+	if (ResourceNames.Num() < 3)
+	{
+		ResourceNames.SetNum(3);
+		ResourceNames[0] = "Wood";
+		ResourceNames[1] = "Stone";
+		ResourceNames[2] = "Berry";
+	}
+	if (BuildingArray.Num() < 4)
+	{
+		BuildingArray.SetNum(4);
+	}
+
 	GetWorld()->GetTimerManager().SetTimer(
 		StatsTimerHandle,
 		this,
@@ -51,7 +59,6 @@ void APlayerChar::BeginPlay()
 		true
 	);
 
-	// initialize objective counters on hud
 	if (ObjectWidget)
 	{
 		ObjectWidget->UpdateMatObjectives(MatsCollected);
@@ -65,11 +72,10 @@ void APlayerChar::Tick(float DeltaTime)
 
 	// ========================================================================
 	// linear algebra in gaming (preview placement):
-	// we use vector addition and scalar multiplication to place an object in
-	// front of the player. CamLocation is a point in 3d space (x,y,z), and
-	// CamForward is a normalized direction vector (length of 1). multiplying
-	// CamForward by 400 extends the vector 400 units, and adding it to
-	// CamLocation gives the target 3d point in world space.
+	// vector addition and scalar multiplication position building parts in
+	// front of the player. CamLocation is a 3d point and CamForward is a unit
+	// direction vector. multiplying by 400 extends the vector forward, and
+	// adding CamLocation computes the world space placement point.
 	// ========================================================================
 	if (isBuilding && SpawnedPart)
 	{
@@ -80,10 +86,38 @@ void APlayerChar::Tick(float DeltaTime)
 		SpawnedPart->SetActorLocation(PlaceLocation);
 	}
 
-	// update hud bars every frame
 	if (PlayerUI)
 	{
 		PlayerUI->UpdateBars(Health, Hunger, Stamina);
+	}
+
+	// proximity melee attack check from nearby enemy AI characters
+	static float MeleeHitCooldown = 0.0f;
+	MeleeHitCooldown -= DeltaTime;
+
+	if (MeleeHitCooldown <= 0.0f && Health > 0.0f)
+	{
+		TArray<AActor*> AllCharacters;
+		UGameplayStatics::GetAllActorsOfClass(GetWorld(), ACharacter::StaticClass(), AllCharacters);
+
+		for (AActor* CharActor : AllCharacters)
+		{
+			if (CharActor && CharActor != this)
+			{
+				float Dist = FVector::Dist(GetActorLocation(), CharActor->GetActorLocation());
+				if (Dist <= 180.0f)
+				{
+					SetHealth(-15.0f);
+					MeleeHitCooldown = 1.5f;
+
+					if (GEngine)
+					{
+						GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Orange, FString::Printf(TEXT("Enemy AI attacked you! -15 HP (Health: %.0f/100)"), Health));
+					}
+					break;
+				}
+			}
+		}
 	}
 }
 
@@ -91,15 +125,11 @@ void APlayerChar::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 
-	// movement axis bindings
 	PlayerInputComponent->BindAxis("MoveForward", this, &APlayerChar::MoveForward);
 	PlayerInputComponent->BindAxis("MoveRight", this, &APlayerChar::MoveRight);
-
-	// mouse look axis bindings
 	PlayerInputComponent->BindAxis("LookUp", this, &APawn::AddControllerPitchInput);
 	PlayerInputComponent->BindAxis("Turn", this, &APawn::AddControllerYawInput);
 
-	// action bindings for jumping, interacting, and building rotation
 	PlayerInputComponent->BindAction("JumpEvent", IE_Pressed, this, &APlayerChar::StartJump);
 	PlayerInputComponent->BindAction("JumpEvent", IE_Released, this, &APlayerChar::StopJump);
 	PlayerInputComponent->BindAction("Interact", IE_Pressed, this, &APlayerChar::FindObject);
@@ -109,29 +139,23 @@ void APlayerChar::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 // ============================================================================
 // linear algebra in gaming (movement & rotation matrices):
 // rotation matrices take the player look angle and convert it into directional
-// basis vectors. the x axis gives the forward vector, and the y axis gives the
-// right vector. AddMovementInput scales these unit vectors by axisValue to move
-// the character in the proper world direction.
+// basis vectors. the x axis gives forward and the y axis gives right.
+// AddMovementInput scales these unit vectors to move the character.
 // ============================================================================
 void APlayerChar::MoveForward(float axisValue)
 {
-	if (bIsDead) return;
-
 	FVector Direction = FRotationMatrix(Controller->GetControlRotation()).GetUnitAxis(EAxis::X);
 	AddMovementInput(Direction, axisValue);
 }
 
 void APlayerChar::MoveRight(float axisValue)
 {
-	if (bIsDead) return;
-
 	FVector Direction = FRotationMatrix(Controller->GetControlRotation()).GetUnitAxis(EAxis::Y);
 	AddMovementInput(Direction, axisValue);
 }
 
 void APlayerChar::StartJump()
 {
-	if (bIsDead) return;
 	Jump();
 }
 
@@ -142,17 +166,12 @@ void APlayerChar::StopJump()
 
 // ============================================================================
 // player stat management:
-// clamps stats between 0 and 100 to prevent going over maximum or under zero
+// clamps health, hunger, and stamina between 0 and 100
 // ============================================================================
 
 void APlayerChar::SetHealth(float amount)
 {
 	Health = FMath::Clamp(Health + amount, 0.0f, 100.0f);
-
-	if (Health <= 0.0f && !bIsDead)
-	{
-		Die();
-	}
 }
 
 void APlayerChar::SetHunger(float amount)
@@ -165,44 +184,47 @@ void APlayerChar::SetStamina(float amount)
 	Stamina = FMath::Clamp(Stamina + amount, 0.0f, 100.0f);
 }
 
-// drains hunger every 2 seconds, regens stamina, or damages player if starving
 void APlayerChar::DecreaseStats()
 {
-	if (bIsDead) return;
-
-	// drain hunger gradually over time
 	SetHunger(-1.0f);
 
-	// regenerate stamina if player is not starving
 	if (Hunger > 0.0f)
 	{
 		SetStamina(2.0f);
 	}
 	else
 	{
-		// player takes damage when starving at 0 hunger
 		SetHealth(-2.0f);
 	}
 }
 
-// eats one berry from inventory to restore hunger and stamina
+// eats one berry from inventory to refill hunger and stamina
 void APlayerChar::EatBerry()
 {
-	if (bIsDead) return;
-
-	// check if player has berries in inventory (index 2)
-	if (ResourcesArray.IsValidIndex(2) && ResourcesArray[2] > 0)
+	// check if player has berries in inventory (either in ResourcesArray[2] or Berry variable)
+	int32 CurrentBerries = (ResourcesArray.IsValidIndex(2) ? ResourcesArray[2] : 0);
+	if (CurrentBerries <= 0 && Berry > 0)
 	{
-		ResourcesArray[2] -= 1;
-		Berry = ResourcesArray[2];
+		CurrentBerries = Berry;
+	}
 
-		// restore hunger and stamina clamped to max 100
+	if (CurrentBerries > 0)
+	{
+		CurrentBerries -= 1;
+		Berry = CurrentBerries;
+
+		if (ResourcesArray.IsValidIndex(2))
+		{
+			ResourcesArray[2] = CurrentBerries;
+		}
+
+		// restore hunger and stamina
 		SetHunger(25.0f);
 		SetStamina(15.0f);
 
 		if (GEngine)
 		{
-			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, TEXT("Ate berry: +25 hunger, +15 stamina"));
+			GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Green, FString::Printf(TEXT("Ate Berry! Hunger: %.0f/100, Stamina: %.0f/100 (Berries left: %d)"), Hunger, Stamina, CurrentBerries));
 		}
 	}
 	else
@@ -214,48 +236,32 @@ void APlayerChar::EatBerry()
 	}
 }
 
-// handles damage from external sources like ai attacks
 float APlayerChar::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
 	float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
-
-	if (!bIsDead)
-	{
-		SetHealth(-ActualDamage);
-	}
-
+	SetHealth(-ActualDamage);
 	return ActualDamage;
 }
 
-// handles player death and triggers lose widget
-void APlayerChar::Die()
-{
-	bIsDead = true;
-	Health = 0.0f;
-
-	if (GEngine)
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 4.0f, FColor::Red, TEXT("Player died! Game Over."));
-	}
-
-	// call blueprint event to display win/lose screen
-	OnPlayerDeath();
-}
-
-// adds collected resources to the matching inventory slot
+// adds collected resources to inventory
 void APlayerChar::GiveResource(int32 amount, FString resourceType)
 {
-	if (resourceType == "Wood")
+	if (ResourcesArray.Num() < 3)
+	{
+		ResourcesArray.SetNum(3);
+	}
+
+	if (resourceType.Equals(TEXT("Wood"), ESearchCase::IgnoreCase))
 	{
 		ResourcesArray[0] += amount;
 		Wood = ResourcesArray[0];
 	}
-	else if (resourceType == "Stone")
+	else if (resourceType.Equals(TEXT("Stone"), ESearchCase::IgnoreCase) || resourceType.Equals(TEXT("Rock"), ESearchCase::IgnoreCase))
 	{
 		ResourcesArray[1] += amount;
 		Stone = ResourcesArray[1];
 	}
-	else if (resourceType == "Berry")
+	else if (resourceType.Equals(TEXT("Berry"), ESearchCase::IgnoreCase) || resourceType.Equals(TEXT("Berries"), ESearchCase::IgnoreCase))
 	{
 		ResourcesArray[2] += amount;
 		Berry = ResourcesArray[2];
@@ -264,17 +270,12 @@ void APlayerChar::GiveResource(int32 amount, FString resourceType)
 
 // ============================================================================
 // trace and collision in gaming:
-// line tracing (raycasting) projects a ray from a start vector to an end vector
-// through the physics scene. the physics engine tests bounding boxes and polygon
-// meshes along the ray using collision channels like ECC_Visibility. when an
-// intersection occurs, HitResult returns hit coordinates, surface normals, and
-// actor pointers so we can collect resources accurately.
+// line tracing (raycasting) projects a ray from a start vector to an end vector.
+// the physics engine tests bounding boxes and meshes along the ray using
+// collision channels like ECC_Visibility, returning hit coordinates and actors.
 // ============================================================================
 void APlayerChar::FindObject()
 {
-	if (bIsDead) return;
-
-	// if placing a building, clicking places the object down
 	if (isBuilding)
 	{
 		isBuilding = false;
@@ -283,7 +284,6 @@ void APlayerChar::FindObject()
 		{
 			SpawnedPart->Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 
-			// if placing a turret, activate its targeting and firing
 			ATurretBuildingPart* TurretPart = Cast<ATurretBuildingPart>(SpawnedPart);
 			if (TurretPart)
 			{
@@ -291,7 +291,6 @@ void APlayerChar::FindObject()
 			}
 		}
 
-		// update building objective count
 		ObjectsBuilt += 1.0f;
 
 		if (ObjectWidget)
@@ -302,7 +301,6 @@ void APlayerChar::FindObject()
 		return;
 	}
 
-	// resource harvesting costs 5 stamina per hit
 	if (Stamina >= 5.0f)
 	{
 		SetStamina(-5.0f);
@@ -317,7 +315,6 @@ void APlayerChar::FindObject()
 		QueryParams.bTraceComplex = true;
 		QueryParams.bReturnFaceIndex = true;
 
-		// cast line trace using visibility channel
 		GetWorld()->LineTraceSingleByChannel(
 			HitResult,
 			StartLocation,
@@ -333,17 +330,14 @@ void APlayerChar::FindObject()
 			FString hitName = HitResource->resourceName;
 			int32 resourceValue = HitResource->resourceAmount;
 
-			// add resources to inventory
 			GiveResource(resourceValue, hitName);
 
-			// update total collected materials objective
 			MatsCollected += static_cast<float>(resourceValue);
 			if (ObjectWidget)
 			{
 				ObjectWidget->UpdateMatObjectives(MatsCollected);
 			}
 
-			// deduct resource pool and destroy node when depleted
 			HitResource->totalResource -= resourceValue;
 
 			if (HitResource->totalResource > 0)
@@ -362,7 +356,6 @@ void APlayerChar::FindObject()
 				}
 			}
 
-			// spawn hit decal at hit point
 			if (HitDecal)
 			{
 				UGameplayStatics::SpawnDecalAtLocation(
@@ -378,34 +371,54 @@ void APlayerChar::FindObject()
 	}
 }
 
-// subtracts crafting materials and adds crafted item to building array
+// checks resource requirements and crafts building parts
 void APlayerChar::UpdateResources(int32 woodAmount, int32 stoneAmount, FString buildingObject)
 {
-	ResourcesArray[0] -= woodAmount;
-	Wood = ResourcesArray[0];
+	if (!ResourcesArray.IsValidIndex(0) || !ResourcesArray.IsValidIndex(1))
+	{
+		return;
+	}
 
-	ResourcesArray[1] -= stoneAmount;
-	Stone = ResourcesArray[1];
+	// only craft if player has enough wood and stone
+	if (ResourcesArray[0] >= woodAmount && ResourcesArray[1] >= stoneAmount)
+	{
+		ResourcesArray[0] -= woodAmount;
+		Wood = ResourcesArray[0];
 
-	if (buildingObject == "Wall")
-	{
-		BuildingArray[0] += 1;
+		ResourcesArray[1] -= stoneAmount;
+		Stone = ResourcesArray[1];
+
+		if (buildingObject == "Wall" && BuildingArray.IsValidIndex(0))
+		{
+			BuildingArray[0] += 1;
+		}
+		else if (buildingObject == "Floor" && BuildingArray.IsValidIndex(1))
+		{
+			BuildingArray[1] += 1;
+		}
+		else if (buildingObject == "Ceiling" && BuildingArray.IsValidIndex(2))
+		{
+			BuildingArray[2] += 1;
+		}
+		else if (buildingObject == "Turret" && BuildingArray.IsValidIndex(3))
+		{
+			BuildingArray[3] += 1;
+		}
+
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, FString::Printf(TEXT("Crafted %s!"), *buildingObject));
+		}
 	}
-	else if (buildingObject == "Floor")
+	else
 	{
-		BuildingArray[1] += 1;
-	}
-	else if (buildingObject == "Ceiling")
-	{
-		BuildingArray[2] += 1;
-	}
-	else if (buildingObject == "Turret")
-	{
-		BuildingArray[3] += 1;
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("Not enough resources to craft!"));
+		}
 	}
 }
 
-// spawns building part 400 units in front of player for placement
 void APlayerChar::SpawnBuilding(int32 buildingID, bool& isSuccess)
 {
 	if (!isBuilding && BuildingArray.IsValidIndex(buildingID) && BuildingArray[buildingID] > 0)
@@ -427,7 +440,6 @@ void APlayerChar::SpawnBuilding(int32 buildingID, bool& isSuccess)
 			SpawnParams
 		);
 
-		// disable collision during preview movement so it doesn't push the player
 		if (SpawnedPart)
 		{
 			SpawnedPart->Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -440,7 +452,6 @@ void APlayerChar::SpawnBuilding(int32 buildingID, bool& isSuccess)
 	isSuccess = false;
 }
 
-// rotates currently held building part by 90 degrees yaw
 void APlayerChar::RotateBuilding()
 {
 	if (SpawnedPart)

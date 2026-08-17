@@ -12,7 +12,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "PlayerChar.generated.h"
 
-// player character class that controls movement, stats, inventory, crafting, and interaction
+// player character class controlling movement, stats, inventory, crafting, and interaction
 UCLASS()
 class PASCUAL_GAM312_API APlayerChar : public ACharacter
 {
@@ -78,20 +78,13 @@ public:
 	// handles taking damage from starvation or external attacks
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
 
-	// called when player dies
-	void Die();
-
-	// blueprint event triggered on death to show the lose widget
-	UFUNCTION(BlueprintImplementableEvent, Category = "Player Stats")
-	void OnPlayerDeath();
-
 	// adds collected resources to inventory array
 	UFUNCTION(BlueprintCallable, Category = "Resources")
 	void GiveResource(int32 amount, FString resourceType);
 
 	// --- building system functions ---
 
-	// spends wood and stone to craft building parts
+	// spends wood and stone to craft building parts if player has enough materials
 	UFUNCTION(BlueprintCallable, Category = "Building")
 	void UpdateResources(int32 woodAmount, int32 stoneAmount, FString buildingObject);
 
@@ -103,35 +96,31 @@ public:
 	UFUNCTION()
 	void RotateBuilding();
 
-	// --- player stat variables ---
+	// --- Player Stat Variables ---
 
-	// player health points (0 to 100)
+	// how much health the player has
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Player Stats")
 	float Health = 100.0f;
 
-	// player hunger level (0 to 100)
+	// how full the player is
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Player Stats")
 	float Hunger = 100.0f;
 
-	// player stamina energy (0 to 100)
+	// how much stamina the player has
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Player Stats")
 	float Stamina = 100.0f;
 
-	// tracks if the player has run out of health
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Player Stats")
-	bool bIsDead = false;
+	// --- Resource Inventory Variables ---
 
-	// --- resource inventory variables ---
-
-	// wood inventory count
+	// how much wood the player has gathered
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Resources")
 	int32 Wood = 0;
 
-	// stone inventory count
+	// how much stone the player has gathered
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Resources")
 	int32 Stone = 0;
 
-	// berry inventory count
+	// how many berries the player has gathered
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Resources")
 	int32 Berry = 0;
 
@@ -139,13 +128,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Resources")
 	TArray<int32> ResourcesArray;
 
-	// --- building system variables ---
+	// --- Building System Variables ---
 
 	// array holding crafted building counts (0=walls, 1=floors, 2=ceilings, 3=turrets)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Building")
 	TArray<int32> BuildingArray;
 
-	// true when currently positioning a building part
+	// whether we are currently placing a building part
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Building")
 	bool isBuilding = false;
 
