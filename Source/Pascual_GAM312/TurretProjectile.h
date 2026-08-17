@@ -9,8 +9,7 @@
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "TurretProjectile.generated.h"
 
-// TurretProjectile is spawned by ATurretBuildingPart. It flies forward at a set speed
-// and deals damage to enemy characters (AAIChar) upon impact before destroying itself.
+// projectile spawned by turret building part that flies toward targets and deals damage
 UCLASS()
 class PASCUAL_GAM312_API ATurretProjectile : public AActor
 {
@@ -19,23 +18,38 @@ class PASCUAL_GAM312_API ATurretProjectile : public AActor
 public:	
 	ATurretProjectile();
 
-	// Collision sphere component
+	virtual void Tick(float DeltaTime) override;
+
+	// collision sphere component
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Projectile")
 	USphereComponent* CollisionComp;
 
-	// Visual mesh for the projectile
+	// visual mesh for the projectile
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Projectile")
 	UStaticMeshComponent* ProjectileMesh;
 
-	// Movement component handling trajectory and velocity
+	// movement component handling trajectory and velocity
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Movement")
 	UProjectileMovementComponent* ProjectileMovement;
 
-	// Damage dealt to enemies hit by this projectile
+	// damage dealt to enemies hit by this projectile
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile")
-	float Damage = 25.0f;
+	float Damage = 50.0f;
 
-	// Collision hit event handler
+	// target actor this projectile is homing/flying towards
+	UPROPERTY(BlueprintReadWrite, Category = "Projectile")
+	AActor* TargetActor = nullptr;
+
+	// collision hit event handler
 	UFUNCTION()
 	void OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+
+	// collision overlap event handler
+	UFUNCTION()
+	void OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+
+	void ApplyProjectileDamage(AActor* OtherActor);
+
+protected:
+	virtual void BeginPlay() override;
 };
