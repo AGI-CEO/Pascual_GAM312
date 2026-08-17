@@ -8,12 +8,21 @@
 #include "Engine/World.h"
 #include "TimerManager.h"
 
+// ============================================================================
+// linear algebra in gaming (turret targeting and rotation):
+// we calculate the euclidean distance between two 3d points using the distance
+// formula sqrt((x2-x1)^2 + (y2-y1)^2 + (z2-z1)^2). to aim at the target, we
+// subtract the turret location vector from the target location vector and
+// normalize it into a unit direction vector, then convert that direction vector
+// into a yaw rotation angle.
+// ============================================================================
+
 ATurretBuildingPart::ATurretBuildingPart()
 {
-	// Enable tick for target searching and rotation tracking
+	// enable tick for target searching and rotation tracking
 	PrimaryActorTick.bCanEverTick = true;
 
-	// Create MuzzleComponent attachment point for projectile spawning
+	// create muzzle component attachment point for projectile spawning
 	MuzzleComponent = CreateDefaultSubobject<USceneComponent>(TEXT("MuzzleComponent"));
 	MuzzleComponent->SetupAttachment(PivotArrow);
 	MuzzleComponent->SetRelativeLocation(FVector(100.0f, 0.0f, 50.0f));
@@ -23,7 +32,7 @@ void ATurretBuildingPart::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// If spawned directly as active (bIsPlaced true in editor), start firing timer
+	// if spawned directly as active, start firing timer
 	if (bIsPlaced)
 	{
 		OnPlaced();
@@ -34,14 +43,14 @@ void ATurretBuildingPart::OnPlaced()
 {
 	bIsPlaced = true;
 
-	// Ensure collision is enabled once placed
+	// enable collision once placed
 	if (Mesh)
 	{
 		Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 		Mesh->SetCollisionResponseToAllChannels(ECollisionResponse::ECR_Block);
 	}
 
-	// Start firing timer
+	// start continuous firing timer
 	GetWorld()->GetTimerManager().SetTimer(
 		FireTimerHandle,
 		this,
@@ -55,7 +64,7 @@ void ATurretBuildingPart::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	// Only search and track targets if the turret has been placed
+	// only track targets when placed
 	if (!bIsPlaced)
 	{
 		return;
@@ -69,15 +78,16 @@ void ATurretBuildingPart::Tick(float DeltaTime)
 	}
 }
 
+// finds nearest alive enemy within range
 void ATurretBuildingPart::FindTarget()
 {
-	// Check if current target is still valid and within range
+	// check if current target is still valid and in range
 	if (CurrentTarget && IsValid(CurrentTarget))
 	{
 		float Distance = FVector::Dist(GetActorLocation(), CurrentTarget->GetActorLocation());
 		if (Distance <= TargetRange)
 		{
-			return; // Keep existing target
+			return;
 		}
 	}
 
@@ -102,6 +112,7 @@ void ATurretBuildingPart::FindTarget()
 	}
 }
 
+// rotates turret towards target using interp
 void ATurretBuildingPart::RotateTowardsTarget(float DeltaTime)
 {
 	if (!CurrentTarget) return;
@@ -109,14 +120,16 @@ void ATurretBuildingPart::RotateTowardsTarget(float DeltaTime)
 	FVector TargetLocation = CurrentTarget->GetActorLocation();
 	FVector TurretLocation = GetActorLocation();
 
-	// Focus rotation on Yaw (horizontal aim)
+	// calculate look at rotation focused on yaw
 	FRotator LookAtRotation = UKismetMathLibrary::FindLookAtRotation(TurretLocation, TargetLocation);
 	FRotator TargetRotation = FRotator(0.0f, LookAtRotation.Yaw, 0.0f);
 
+	// smooth interpolation between current rotation and target rotation
 	FRotator NewRotation = FMath::RInterpTo(GetActorRotation(), TargetRotation, DeltaTime, RotationSpeed);
 	SetActorRotation(NewRotation);
 }
 
+// spawns and fires projectile at target
 void ATurretBuildingPart::FireProjectile()
 {
 	if (!bIsPlaced || !CurrentTarget || !IsValid(CurrentTarget) || !ProjectileClass)
@@ -124,7 +137,7 @@ void ATurretBuildingPart::FireProjectile()
 		return;
 	}
 
-	// Verify target is still within range
+	// verify target is within range
 	float Distance = FVector::Dist(GetActorLocation(), CurrentTarget->GetActorLocation());
 	if (Distance > TargetRange)
 	{

@@ -5,11 +5,19 @@
 #include "Kismet/GameplayStatics.h"
 #include "Engine/DamageEvents.h"
 
+// ============================================================================
+// trace and collision in gaming (projectile physics & hits):
+// game engines use simplified collision shapes like spheres and capsules to
+// test overlaps and blocking hits each frame. when the sphere component intersects
+// another bounding volume, the physics engine registers a hit event and returns
+// contact normal and actor data so damage can be applied.
+// ============================================================================
+
 ATurretProjectile::ATurretProjectile()
 {
 	PrimaryActorTick.bCanEverTick = false;
 
-	// Set up collision sphere as root component
+	// set up collision sphere as root component
 	CollisionComp = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComp"));
 	CollisionComp->InitSphereRadius(15.0f);
 	CollisionComp->SetCollisionProfileName(TEXT("BlockAllDynamic"));
@@ -17,30 +25,31 @@ ATurretProjectile::ATurretProjectile()
 	CollisionComp->SetCanEverAffectNavigation(false);
 	RootComponent = CollisionComp;
 
-	// Set up static mesh component for visual bullet
+	// set up static mesh for projectile bullet visual
 	ProjectileMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ProjectileMesh"));
 	ProjectileMesh->SetupAttachment(CollisionComp);
 	ProjectileMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
-	// Set up projectile movement
+	// set up projectile movement component for linear trajectory
 	ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovementComp"));
 	ProjectileMovement->UpdatedComponent = CollisionComp;
 	ProjectileMovement->InitialSpeed = 2000.0f;
 	ProjectileMovement->MaxSpeed = 2000.0f;
 	ProjectileMovement->bRotationFollowsVelocity = true;
 	ProjectileMovement->bShouldBounce = false;
-	ProjectileMovement->ProjectileGravityScale = 0.0f; // Linear trajectory
+	ProjectileMovement->ProjectileGravityScale = 0.0f;
 
-	// Destroy projectile after 3 seconds if it misses all targets
+	// destroy projectile after 3 seconds if no target is hit
 	InitialLifeSpan = 3.0f;
 }
 
+// handles collision impact and applies damage
 void ATurretProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	// Don't hit self or owner turret
+	// ignore collision with self or owner turret
 	if (OtherActor && OtherActor != this && OtherActor != GetOwner())
 	{
-		// Apply damage using Unreal Engine's standard damage system
+		// apply damage using unreal engine damage pipeline
 		UGameplayStatics::ApplyDamage(
 			OtherActor,
 			Damage,
@@ -49,7 +58,7 @@ void ATurretProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, 
 			UDamageType::StaticClass()
 		);
 
-		// Also check directly for AAIChar for explicit handling
+		// explicitly apply damage to ai character
 		AAIChar* Enemy = Cast<AAIChar>(OtherActor);
 		if (Enemy)
 		{
@@ -57,6 +66,7 @@ void ATurretProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, 
 			Enemy->TakeDamage(Damage, DamageEvent, GetInstigatorController(), this);
 		}
 
+		// destroy bullet on contact
 		Destroy();
 	}
 }
