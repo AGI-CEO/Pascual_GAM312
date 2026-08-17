@@ -6,17 +6,18 @@
 #include "GameFramework/Character.h"
 #include "AIChar.generated.h"
 
-// ai character class linked to ai controller for pathfinding and wander behavior
+// ai character class with pathfinding, combat contact damage, and health
 UCLASS()
 class PASCUAL_GAM312_API AAIChar : public ACharacter
 {
 	GENERATED_BODY()
 
 public:
-	// constructor setting defaults
 	AAIChar();
 
-	// current health of the enemy character
+	virtual void Tick(float DeltaTime) override;
+
+	// health of the enemy character
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
 	float Health = 100.0f;
 
@@ -24,19 +25,22 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
 	float AttackDamage = 15.0f;
 
-	// cooldown between contact attacks in seconds
+	// attack cooldown in seconds
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
 	float AttackCooldown = 1.5f;
 
-	// tracks whether ai can attack right now
+	// attack range in units
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
+	float AttackRange = 160.0f;
+
+	// whether ai can attack
 	bool bCanAttack = true;
 
-	// called when taking damage from turret projectiles
+	// handles taking damage from turret projectiles
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
 
-	// handles capsule overlap with player to deal damage
-	UFUNCTION()
-	void OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+	// deals contact attack damage to player
+	void AttackPlayer(class APlayerChar* Player);
 
 	// resets attack cooldown
 	void ResetAttack();
