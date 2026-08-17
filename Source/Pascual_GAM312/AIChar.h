@@ -6,26 +6,44 @@
 #include "GameFramework/Character.h"
 #include "AIChar.generated.h"
 
-// This is our AI Character class — it's a simple Character that serves as
-// the C++ base for our AI Blueprint. All of the actual wander behavior
-// is set up inside the AI Controller Blueprint, not here in C++.
+// ai character class linked to ai controller for pathfinding and wander behavior
 UCLASS()
 class PASCUAL_GAM312_API AAIChar : public ACharacter
 {
 	GENERATED_BODY()
 
 public:
-	// Constructor — sets default values for this character
+	// constructor setting defaults
 	AAIChar();
 
-	// Current health of the AI enemy character
+	// current health of the enemy character
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
 	float Health = 100.0f;
 
-	// Called when this actor takes damage from projectiles or attacks
+	// damage dealt to player on contact
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
+	float AttackDamage = 15.0f;
+
+	// cooldown between contact attacks in seconds
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
+	float AttackCooldown = 1.5f;
+
+	// tracks whether ai can attack right now
+	bool bCanAttack = true;
+
+	// called when taking damage from turret projectiles
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
 
+	// handles capsule overlap with player to deal damage
+	UFUNCTION()
+	void OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+
+	// resets attack cooldown
+	void ResetAttack();
+
 protected:
-	// Called when the game starts or when this actor is spawned
 	virtual void BeginPlay() override;
+
+private:
+	FTimerHandle AttackCooldownTimerHandle;
 };
